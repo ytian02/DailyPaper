@@ -14,7 +14,30 @@ Local pipeline for converting a research paper PDF into a Xiaohongshu-style Chin
 
 ## Install
 
+### Windows PowerShell
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip
+pip install -r requirements.txt
+```
+
+### Windows CMD
+
+```cmd
+python -m venv .venv
+.\.venv\Scripts\activate.bat
+python -m pip install -U pip
+pip install -r requirements.txt
+```
+
+### macOS / Linux
+
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
 pip install -r requirements.txt
 ```
 
@@ -31,10 +54,24 @@ api:
   openai_base_url: null
 ```
 
-Set the relevant API key:
+Set the relevant API key.
+
+### Windows PowerShell
+
+```powershell
+$env:OPENAI_API_KEY="your-key"
+```
+
+### Windows CMD
+
+```cmd
+set OPENAI_API_KEY=your-key
+```
+
+### macOS / Linux
 
 ```bash
-$env:OPENAI_API_KEY="your-key"
+export OPENAI_API_KEY="your-key"
 ```
 
 For OpenAI-compatible third-party gateways such as aihubmix, keep `provider: openai` and set a custom base URL:
@@ -48,8 +85,21 @@ api:
   openai_base_url: https://api.aihubmix.com/v1
 ```
 
-```bash
+Set the gateway API key:
+
+```powershell
+# Windows PowerShell
 $env:AIHUBMIX_API_KEY="your-key"
+```
+
+```cmd
+:: Windows CMD
+set AIHUBMIX_API_KEY=your-key
+```
+
+```bash
+# macOS / Linux
+export AIHUBMIX_API_KEY="your-key"
 ```
 
 The API key environment variable name is configurable through `openai_api_key_env`.
@@ -59,10 +109,25 @@ For OpenRouter:
 ```yaml
 provider: openrouter
 model: openai/gpt-4o-mini
+
+api:
+  openrouter_api_key_env: OPENROUTER_API_KEY
+  openrouter_base_url: https://openrouter.ai/api/v1
+```
+
+```powershell
+# Windows PowerShell
+$env:OPENROUTER_API_KEY="your-key"
+```
+
+```cmd
+:: Windows CMD
+set OPENROUTER_API_KEY=your-key
 ```
 
 ```bash
-$env:OPENROUTER_API_KEY="your-key"
+# macOS / Linux
+export OPENROUTER_API_KEY="your-key"
 ```
 
 For LiteLLM:
@@ -74,8 +139,22 @@ model: gpt-4o-mini
 
 ## Run
 
+### Windows PowerShell
+
+```powershell
+python pipeline.py --pdf .\papers\sample.pdf --config config.yaml
+```
+
+### Windows CMD
+
+```cmd
+python pipeline.py --pdf .\papers\sample.pdf --config config.yaml
+```
+
+### macOS / Linux
+
 ```bash
-python pipeline.py --pdf path/to/paper.pdf --config config.yaml
+python pipeline.py --pdf ./papers/sample.pdf --config config.yaml
 ```
 
 Outputs are saved to:
@@ -85,8 +164,19 @@ Outputs are saved to:
 
 You can override the markdown path:
 
+```powershell
+# Windows PowerShell
+python pipeline.py --pdf .\papers\sample.pdf --output .\outputs\custom.md
+```
+
+```cmd
+:: Windows CMD
+python pipeline.py --pdf .\papers\sample.pdf --output .\outputs\custom.md
+```
+
 ```bash
-python pipeline.py --pdf path/to/paper.pdf --output outputs/custom.md
+# macOS / Linux
+python pipeline.py --pdf ./papers/sample.pdf --output ./outputs/custom.md
 ```
 
 ## Notes
