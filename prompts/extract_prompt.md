@@ -30,6 +30,7 @@ JSON 格式必须完全符合：
 - 每个 equations 项必须包含：
   - description：通俗中文解释，说明公式在方法中起什么作用。
   - latex：公式的 LaTeX 内容，不要包含外围的 `$` 或 `$$`。
+- JSON 字符串里的 LaTeX 反斜杠必须符合 JSON 转义规则：例如输出 `\\sum`，不要输出 `\sum`；输出 `\\mathcal{L}`，不要输出 `\mathcal{L}`。
 - 如果公式无法从 PDF 文本中清晰恢复，latex 写为“未清晰提取”，description 说明原因；不要凭空补公式。
 - offline_metrics：论文中的离线实验指标、数据集、对比结果；没有则写“未提及”。
 - online_metrics：线上 A/B、生产指标、真实业务指标；没有则写“未提及”。

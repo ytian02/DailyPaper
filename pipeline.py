@@ -103,17 +103,42 @@ def parse_json_response(response: str) -> dict[str, Any]:
     cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s*```$", "", cleaned)
 
-    try:
-        parsed = json.loads(cleaned)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
-        if not match:
-            raise ValueError("Stage 1 response did not contain valid JSON.")
-        parsed = json.loads(match.group(0))
+    json_text = _extract_json_object(cleaned)
+    parsed = _loads_json_with_latex_repair(json_text)
 
     if not isinstance(parsed, dict):
         raise ValueError("Stage 1 JSON must be an object.")
     return parsed
+
+
+def _extract_json_object(text: str) -> str:
+    try:
+        json.loads(text)
+        return text
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+        if not match:
+            raise ValueError("Stage 1 response did not contain valid JSON.")
+        return match.group(0)
+
+
+def _loads_json_with_latex_repair(text: str) -> Any:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as first_error:
+        repaired = _escape_invalid_json_backslashes(text)
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError as second_error:
+            raise ValueError(
+                "Stage 1 response was not valid JSON. This is often caused by "
+                "unescaped LaTeX backslashes; update the prompt/model output or inspect the raw LLM response."
+            ) from second_error
+
+
+def _escape_invalid_json_backslashes(text: str) -> str:
+    """Escape backslashes that are invalid in JSON strings, common in raw LaTeX."""
+    return re.sub(r'\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})', r"\\\\", text)
 
 
 def normalize_extraction(data: dict[str, Any]) -> dict[str, Any]:
