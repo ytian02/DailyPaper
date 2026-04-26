@@ -9,7 +9,8 @@ Local pipeline for converting a research paper PDF into a Xiaohongshu-style Chin
 - Uses two LLM stages:
   - structured extraction JSON
   - Xiaohongshu-style markdown rewrite
-- Inserts title/authors/abstract and selected embedded paper images into markdown.
+- Inserts title/authors/abstract and selected paper visuals into markdown.
+- Supports vector-only PDF figures by rendering local page-region crops.
 - Keeps full-page screenshots available as an optional fallback.
 - Exports the final markdown note to PDF with a pure-Python renderer.
 - Supports OpenAI, OpenAI-compatible gateways, LiteLLM, and OpenRouter through one `call_llm(prompt, input)` interface.
@@ -61,6 +62,9 @@ pipeline:
   output_dir: outputs
   insert_key_assets: true
   key_images_max: 4
+  crop_vector_figures: true
+  crop_figure_zoom: 2.0
+  crop_max_per_page: 2
   insert_key_pages: false
   key_pages_max: 5
   render_page_zoom: 2.0
@@ -174,6 +178,7 @@ By default, the pipeline inserts cleaner paper assets into the markdown:
 - title/authors text
 - abstract text when it can be detected
 - selected embedded PDF images, such as framework/model/result figures
+- vector figure/table crops when the PDF does not expose figures as embedded images
 
 Disable extracted assets:
 
@@ -186,6 +191,16 @@ Full-page screenshots are still available as a manual fallback:
 ```powershell
 python pipeline.py --pdf .\papers\sample.pdf --key-pages 1,3,7
 ```
+
+Generated visual assets are saved under:
+
+```text
+outputs/assets/<pdf_name>/images/  # embedded PDF image objects
+outputs/assets/<pdf_name>/crops/   # local crops for vector figures/tables
+outputs/assets/<pdf_name>/page_*.png # manual full-page screenshots
+```
+
+Some papers, especially conference PDFs, draw model diagrams as vector graphics. In that case `images/` may be empty, and the useful visuals will appear in `crops/`.
 
 Disable full-page screenshots:
 
@@ -237,7 +252,7 @@ python pipeline.py --pdf ./papers/sample.pdf --output ./outputs/custom.md
 ## Notes
 
 - OCR/scanned PDFs are out of scope for v1.
-- Default paper images come from embedded PDF image assets; vector-only figures may not be extracted in v1.
+- Default paper images come from embedded PDF image assets first, then vector-compatible local crops.
 - Full-page screenshots are available through `--key-pages`.
 - PDF export keeps LaTeX formulas as readable text; it does not render MathJax in v1.
 - If equations are enabled but not recoverable from the PDF text, the extraction stage is instructed to mark them as `未清晰提取` instead of inventing formulas.

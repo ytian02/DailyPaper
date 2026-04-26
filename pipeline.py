@@ -16,6 +16,7 @@ from tools.pdf_parser import (
     extract_paper_identity,
     extract_page_texts,
     extract_text_from_pdf,
+    extract_vector_figure_crops,
     render_pdf_pages,
     select_key_images,
     select_key_pages,
@@ -279,10 +280,23 @@ def insert_key_assets(
     asset_dir = output_dir / "assets" / _safe_path_name(pdf_path.stem)
     identity = extract_paper_identity(str(pdf_path))
     images = extract_embedded_images(str(pdf_path), asset_dir / "images")
+    max_images = int(config.get("pipeline", {}).get("key_images_max", 4))
     selected_images = select_key_images(
         images,
-        max_images=int(config.get("pipeline", {}).get("key_images_max", 4)),
+        max_images=max_images,
     )
+    if _should_crop_vector_figures(config) and len(selected_images) < max_images:
+        crops = extract_vector_figure_crops(
+            str(pdf_path),
+            asset_dir / "crops",
+            max_per_page=int(config.get("pipeline", {}).get("crop_max_per_page", 2)),
+            zoom=float(config.get("pipeline", {}).get("crop_figure_zoom", 2.0)),
+        )
+        selected_crops = select_key_images(crops, max_images=max_images - len(selected_images))
+        selected_images = sorted(
+            selected_images + selected_crops,
+            key=lambda item: (int(item.get("page", 0)), str(item.get("source", "embedded"))),
+        )
 
     result = markdown
     intro_lines = _identity_markdown(identity)
@@ -359,6 +373,10 @@ def _should_insert_key_assets(args: argparse.Namespace, config: dict[str, Any]) 
     if args.no_key_assets:
         return False
     return bool(config.get("pipeline", {}).get("insert_key_assets", True))
+
+
+def _should_crop_vector_figures(config: dict[str, Any]) -> bool:
+    return bool(config.get("pipeline", {}).get("crop_vector_figures", True))
 
 
 def _with_equations(args: argparse.Namespace, config: dict[str, Any]) -> bool:

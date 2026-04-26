@@ -5,7 +5,7 @@ This repository contains a local Python pipeline that converts a research paper 
 ## Project Shape
 
 - `pipeline.py`: CLI entrypoint and orchestration.
-- `tools/pdf_parser.py`: PDF text extraction, identity extraction, embedded image extraction, key-page selection, and page PNG rendering with `pymupdf`.
+- `tools/pdf_parser.py`: PDF text extraction, identity extraction, embedded image extraction, vector figure crop rendering, key-page selection, and page PNG rendering with `pymupdf`.
 - `tools/equation_extractor.py`: equation candidate heuristics and markdown LaTeX validation.
 - `tools/md_to_pdf.py`: pure-Python markdown-to-PDF rendering with ReportLab.
 - `llm/llm_client.py`: provider abstraction for OpenAI, OpenAI-compatible base URLs, LiteLLM, and OpenRouter.
@@ -86,7 +86,8 @@ For OpenRouter, use `provider: openrouter`; do not reuse `openai_base_url`.
   - stage 2: structured JSON to markdown
 - Keep the six original markdown sections compatible.
 - Default key assets should be inserted near related sections, not appended as full pages.
-- Prefer embedded PDF images for model/framework/result figures.
+- Prefer embedded PDF images for model/framework/result figures, then fall back to vector-compatible page-region crops.
+- Store embedded images in `outputs/assets/<pdf_stem>/images/` and vector crops in `outputs/assets/<pdf_stem>/crops/`.
 - Full-page screenshots are only a fallback through `--key-pages`.
 - PDF export is pure Python and keeps LaTeX formulas as readable text in v1.
 - Equations are disabled by default. Only extract/show formulas when config enables them or `--with-equations` is passed.

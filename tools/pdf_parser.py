@@ -126,6 +126,62 @@ def extract_embedded_images(pdf_path: str, output_dir: str | Path) -> list[dict]
     return images
 
 
+def extract_vector_figure_crops(
+    pdf_path: str,
+    output_dir: str | Path,
+    max_per_page: int = 2,
+    zoom: float = 2.0,
+) -> list[dict]:
+    """Render likely vector figure/table regions as PNG crops."""
+    path = _validate_pdf_path(pdf_path)
+    fitz = _import_fitz()
+    target_dir = Path(output_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    page_texts = {item["page"]: item.get("text", "") for item in extract_page_texts(str(path))}
+
+    try:
+        document = fitz.open(path)
+    except Exception as exc:
+        raise PDFParseError(f"Failed to open PDF: {path}") from exc
+
+    crops: list[dict] = []
+    try:
+        matrix = fitz.Matrix(float(zoom), float(zoom))
+        for page_index in range(document.page_count):
+            page_number = page_index + 1
+            page = document.load_page(page_index)
+            page_rect = page.rect
+            category, context_score = _classify_image_context(page_texts.get(page_number, ""))
+            regions = _find_vector_regions(page, fitz)
+            scored_regions = []
+            for region in regions:
+                score = context_score + _region_size_score(region, page_rect)
+                if score <= 0:
+                    continue
+                scored_regions.append((score, region))
+
+            scored_regions.sort(key=lambda item: (-item[0], item[1].y0, item[1].x0))
+            for crop_index, (score, region) in enumerate(scored_regions[:max_per_page], start=1):
+                image_path = target_dir / f"crop_{page_number:03d}_{crop_index:02d}.png"
+                pixmap = page.get_pixmap(matrix=matrix, clip=region, alpha=False)
+                pixmap.save(image_path)
+                crops.append(
+                    {
+                        "page": page_number,
+                        "path": image_path,
+                        "width": int(region.width),
+                        "height": int(region.height),
+                        "category": category,
+                        "score": score,
+                        "source": "page_crop",
+                    }
+                )
+    finally:
+        document.close()
+
+    return crops
+
+
 def select_key_images(images: list[dict], max_images: int = 4) -> list[dict]:
     """Select representative embedded paper images for markdown insertion."""
     if max_images <= 0:
@@ -364,6 +420,103 @@ def _image_size_score(width: int, height: int) -> int:
         return 4
     if area >= 400_000:
         return 2
+    return 1
+
+
+def _find_vector_regions(page, fitz) -> list:
+    page_rect = page.rect
+    rects = []
+
+    for drawing in page.get_drawings():
+        rect = drawing.get("rect")
+        if not rect or rect.is_empty or rect.is_infinite:
+            continue
+        clipped = fitz.Rect(rect) & page_rect
+        if _is_noise_region(clipped, page_rect):
+            continue
+        rects.append(_expand_rect(clipped, page_rect, 8))
+
+    text_dict = page.get_text("dict")
+    for block in text_dict.get("blocks", []):
+        if block.get("type") != 1:
+            continue
+        rect = fitz.Rect(block.get("bbox", (0, 0, 0, 0))) & page_rect
+        if _is_noise_region(rect, page_rect):
+            continue
+        rects.append(_expand_rect(rect, page_rect, 8))
+
+    merged = _merge_rects(rects, fitz, tolerance=16)
+    return [
+        _expand_rect(rect, page_rect, 14)
+        for rect in merged
+        if not _is_noise_region(rect, page_rect)
+    ]
+
+
+def _merge_rects(rects: list, fitz, tolerance: float = 16) -> list:
+    merged: list = []
+    for rect in sorted(rects, key=lambda item: (item.y0, item.x0)):
+        current = fitz.Rect(rect)
+        matched_index = None
+        for index, existing in enumerate(merged):
+            if _rects_are_close(existing, current, tolerance):
+                matched_index = index
+                break
+        if matched_index is None:
+            merged.append(current)
+        else:
+            merged[matched_index] = merged[matched_index] | current
+
+    changed = True
+    while changed:
+        changed = False
+        output: list = []
+        for rect in merged:
+            combined = fitz.Rect(rect)
+            did_merge = False
+            for index, existing in enumerate(output):
+                if _rects_are_close(existing, combined, tolerance):
+                    output[index] = existing | combined
+                    did_merge = True
+                    changed = True
+                    break
+            if not did_merge:
+                output.append(combined)
+        merged = output
+
+    return merged
+
+
+def _rects_are_close(a, b, tolerance: float) -> bool:
+    expanded = a + (-tolerance, -tolerance, tolerance, tolerance)
+    return expanded.intersects(b)
+
+
+def _expand_rect(rect, page_rect, padding: float):
+    return (rect + (-padding, -padding, padding, padding)) & page_rect
+
+
+def _is_noise_region(rect, page_rect) -> bool:
+    if rect.is_empty:
+        return True
+    area = rect.width * rect.height
+    page_area = page_rect.width * page_rect.height
+    if area < page_area * 0.015:
+        return True
+    if area > page_area * 0.75:
+        return True
+    if rect.y1 < page_rect.height * 0.08 or rect.y0 > page_rect.height * 0.92:
+        return True
+    aspect = max(rect.width / max(rect.height, 1), rect.height / max(rect.width, 1))
+    return aspect > 8
+
+
+def _region_size_score(region, page_rect) -> int:
+    ratio = (region.width * region.height) / max(page_rect.width * page_rect.height, 1)
+    if 0.08 <= ratio <= 0.45:
+        return 8
+    if 0.03 <= ratio <= 0.6:
+        return 4
     return 1
 
 

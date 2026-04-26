@@ -16,6 +16,9 @@ pipeline:
   output_dir: outputs
   insert_key_assets: true
   key_images_max: 4
+  crop_vector_figures: true
+  crop_figure_zoom: 2.0
+  crop_max_per_page: 2
   insert_key_pages: false
   key_pages_max: 5
   render_page_zoom: 2.0
