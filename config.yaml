@@ -14,9 +14,13 @@ pipeline:
   save_intermediate_json: true
   max_input_chars: 60000
   output_dir: outputs
-  insert_key_pages: true
+  insert_key_assets: true
+  key_images_max: 4
+  insert_key_pages: false
   key_pages_max: 5
   render_page_zoom: 2.0
+  extract_equations: false
+  show_equations: false
   export_pdf: false
 
 pdf:

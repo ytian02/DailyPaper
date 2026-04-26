@@ -5,12 +5,12 @@ Local pipeline for converting a research paper PDF into a Xiaohongshu-style Chin
 ## Features
 
 - Extracts full text from local text-based PDFs.
-- Detects likely equation snippets before LLM extraction.
+- Can extract equations when explicitly enabled.
 - Uses two LLM stages:
   - structured extraction JSON
   - Xiaohongshu-style markdown rewrite
-- Preserves important formulas as markdown LaTeX.
-- Inserts selected paper pages as images in markdown.
+- Inserts title/authors/abstract and selected embedded paper images into markdown.
+- Keeps full-page screenshots available as an optional fallback.
 - Exports the final markdown note to PDF with a pure-Python renderer.
 - Supports OpenAI, OpenAI-compatible gateways, LiteLLM, and OpenRouter through one `call_llm(prompt, input)` interface.
 
@@ -59,9 +59,13 @@ pipeline:
   save_intermediate_json: true
   max_input_chars: 60000
   output_dir: outputs
-  insert_key_pages: true
+  insert_key_assets: true
+  key_images_max: 4
+  insert_key_pages: false
   key_pages_max: 5
   render_page_zoom: 2.0
+  extract_equations: false
+  show_equations: false
   export_pdf: false
 
 pdf:
@@ -163,24 +167,40 @@ Outputs are saved to:
 - `outputs/<pdf_name>.md`
 - `outputs/assets/<pdf_name>/page_001.png` and other selected page images
 
-## Key Page Images
+## Key Assets And Images
 
-By default, the pipeline automatically inserts up to 5 selected paper pages into the markdown:
+By default, the pipeline inserts cleaner paper assets into the markdown:
 
-- title/authors page
-- likely framework/model/method pages
-- likely result/metric/table pages
+- title/authors text
+- abstract text when it can be detected
+- selected embedded PDF images, such as framework/model/result figures
 
-Manually choose pages:
+Disable extracted assets:
+
+```powershell
+python pipeline.py --pdf .\papers\sample.pdf --no-key-assets
+```
+
+Full-page screenshots are still available as a manual fallback:
 
 ```powershell
 python pipeline.py --pdf .\papers\sample.pdf --key-pages 1,3,7
 ```
 
-Disable page images:
+Disable full-page screenshots:
 
 ```powershell
 python pipeline.py --pdf .\papers\sample.pdf --no-key-pages
+```
+
+## Equations
+
+Equations are disabled by default so the generated note and PDF stay readable.
+
+Enable equation extraction and LaTeX display:
+
+```powershell
+python pipeline.py --pdf .\papers\sample.pdf --with-equations
 ```
 
 ## PDF Export
@@ -217,7 +237,8 @@ python pipeline.py --pdf ./papers/sample.pdf --output ./outputs/custom.md
 ## Notes
 
 - OCR/scanned PDFs are out of scope for v1.
-- Inserted paper pages are full-page screenshots, not cropped individual figures.
+- Default paper images come from embedded PDF image assets; vector-only figures may not be extracted in v1.
+- Full-page screenshots are available through `--key-pages`.
 - PDF export keeps LaTeX formulas as readable text; it does not render MathJax in v1.
-- If equations are not recoverable from the PDF text, the extraction stage is instructed to mark them as `未清晰提取` instead of inventing formulas.
+- If equations are enabled but not recoverable from the PDF text, the extraction stage is instructed to mark them as `未清晰提取` instead of inventing formulas.
 - The final markdown validator prints warnings for suspicious LaTeX delimiters or missing sections.

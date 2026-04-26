@@ -5,7 +5,7 @@ This repository contains a local Python pipeline that converts a research paper 
 ## Project Shape
 
 - `pipeline.py`: CLI entrypoint and orchestration.
-- `tools/pdf_parser.py`: PDF text extraction, page text metadata, key-page selection, and page PNG rendering with `pymupdf`.
+- `tools/pdf_parser.py`: PDF text extraction, identity extraction, embedded image extraction, key-page selection, and page PNG rendering with `pymupdf`.
 - `tools/equation_extractor.py`: equation candidate heuristics and markdown LaTeX validation.
 - `tools/md_to_pdf.py`: pure-Python markdown-to-PDF rendering with ReportLab.
 - `llm/llm_client.py`: provider abstraction for OpenAI, OpenAI-compatible base URLs, LiteLLM, and OpenRouter.
@@ -32,6 +32,12 @@ Run with manual key pages:
 
 ```bash
 python pipeline.py --pdf path/to/paper.pdf --key-pages 1,3,7
+```
+
+Run with equations enabled:
+
+```bash
+python pipeline.py --pdf path/to/paper.pdf --with-equations
 ```
 
 Run with PDF export:
@@ -78,9 +84,12 @@ For OpenRouter, use `provider: openrouter`; do not reuse `openai_base_url`.
 - Preserve the two-stage LLM design:
   - stage 1: paper text plus equation hints to structured JSON
   - stage 2: structured JSON to markdown
-- Keep the six original markdown sections compatible; append optional paper page images under `## 论文关键图页`.
-- Key pages are full-page screenshots. Do not crop figures unless the user explicitly asks.
+- Keep the six original markdown sections compatible.
+- Default key assets should be inserted near related sections, not appended as full pages.
+- Prefer embedded PDF images for model/framework/result figures.
+- Full-page screenshots are only a fallback through `--key-pages`.
 - PDF export is pure Python and keeps LaTeX formulas as readable text in v1.
-- Do not invent formulas. If PDF text cannot recover an equation, preserve the `未清晰提取` behavior.
+- Equations are disabled by default. Only extract/show formulas when config enables them or `--with-equations` is passed.
+- Do not invent formulas. If enabled and PDF text cannot recover an equation, preserve the `未清晰提取` behavior.
 - Keep generated outputs out of git unless the user explicitly asks for sample artifacts.
 - Prefer small, focused changes and update README examples when command behavior changes.

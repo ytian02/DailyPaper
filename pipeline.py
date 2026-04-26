@@ -12,9 +12,12 @@ from llm.llm_client import call_llm, load_config
 from tools.equation_extractor import extract_equation_candidates, validate_latex_blocks
 from tools.md_to_pdf import markdown_to_pdf
 from tools.pdf_parser import (
+    extract_embedded_images,
+    extract_paper_identity,
     extract_page_texts,
     extract_text_from_pdf,
     render_pdf_pages,
+    select_key_images,
     select_key_pages,
 )
 
@@ -55,17 +58,25 @@ def main() -> int:
         paper_text = extract_text_from_pdf(str(pdf_path))
         paper_text = _truncate_text_if_needed(paper_text, config)
 
-        print("Extracting equation candidates...")
-        equation_candidates = extract_equation_candidates(paper_text)
+        with_equations = _with_equations(args, config)
+        if with_equations:
+            print("Extracting equation candidates...")
+            equation_candidates = extract_equation_candidates(paper_text)
+        else:
+            print("Skipping equation extraction by default. Use --with-equations to enable it.")
+            equation_candidates = []
 
         print("Running LLM stage 1: structured extraction...")
         extract_prompt = _read_prompt("prompts/extract_prompt.md")
         extraction_input = {
             "paper_text": paper_text,
             "equation_candidates": equation_candidates,
+            "extract_equations": with_equations,
         }
         raw_json = call_llm(extract_prompt, extraction_input, config)
         structured = normalize_extraction(parse_json_response(raw_json))
+        if not with_equations:
+            structured["equations"] = []
 
         if config.get("pipeline", {}).get("save_intermediate_json", True):
             json_path = output_dir / f"{pdf_path.stem}.json"
@@ -77,15 +88,26 @@ def main() -> int:
 
         print("Running LLM stage 2: Xiaohongshu markdown rewrite...")
         summarize_prompt = _read_prompt("prompts/summarize_prompt.md")
-        markdown = call_llm(summarize_prompt, structured, config).strip()
+        markdown = call_llm(
+            summarize_prompt,
+            {
+                "structured_paper": structured,
+                "show_equations": with_equations and _show_equations(args, config),
+            },
+            config,
+        ).strip()
 
         md_path = Path(args.output).expanduser().resolve() if args.output else output_dir / f"{pdf_path.stem}.md"
+        if _should_insert_key_assets(args, config):
+            print("Extracting and inserting key paper assets...")
+            markdown = insert_key_assets(markdown, pdf_path, md_path, output_dir, config)
+
         if _should_insert_key_pages(args, config):
             print("Selecting and rendering key paper pages...")
             markdown = append_key_pages_section(markdown, pdf_path, md_path, output_dir, args, config)
 
         section_warnings = validate_markdown_sections(markdown)
-        latex_warnings = validate_latex_blocks(markdown)
+        latex_warnings = validate_latex_blocks(markdown) if with_equations else []
         for warning in section_warnings + latex_warnings:
             print(f"Warning: {warning}", file=sys.stderr)
 
@@ -123,6 +145,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", help="Optional output directory override.")
     parser.add_argument("--key-pages", help="Comma-separated 1-based PDF pages to render, e.g. 1,3,7.")
     parser.add_argument("--no-key-pages", action="store_true", help="Disable key paper page images in markdown.")
+    parser.add_argument("--no-key-assets", action="store_true", help="Disable extracted title/abstract/images in markdown.")
+    parser.add_argument("--with-equations", action="store_true", help="Enable equation extraction and LaTeX display.")
     parser.add_argument("--export-pdf", action="store_true", help="Render the final markdown to PDF.")
     parser.add_argument("--pdf-output", help="Optional explicit PDF output path.")
     return parser.parse_args()
@@ -245,6 +269,52 @@ def append_key_pages_section(
     return markdown.rstrip() + "\n" + "\n".join(lines).rstrip()
 
 
+def insert_key_assets(
+    markdown: str,
+    pdf_path: Path,
+    md_path: Path,
+    output_dir: Path,
+    config: dict[str, Any],
+) -> str:
+    asset_dir = output_dir / "assets" / _safe_path_name(pdf_path.stem)
+    identity = extract_paper_identity(str(pdf_path))
+    images = extract_embedded_images(str(pdf_path), asset_dir / "images")
+    selected_images = select_key_images(
+        images,
+        max_images=int(config.get("pipeline", {}).get("key_images_max", 4)),
+    )
+
+    result = markdown
+    intro_lines = _identity_markdown(identity)
+    if intro_lines:
+        result = _insert_after_heading(result, "# 简短介绍", intro_lines)
+
+    method_images = [
+        _image_markdown(item, md_path.parent, "模型图")
+        for item in selected_images
+        if item.get("category") == "method"
+    ]
+    result_images = [
+        _image_markdown(item, md_path.parent, "实验结果图")
+        for item in selected_images
+        if item.get("category") == "offline_metrics"
+    ]
+    general_images = [
+        _image_markdown(item, md_path.parent, "论文图")
+        for item in selected_images
+        if item.get("category") == "general"
+    ]
+
+    if method_images:
+        result = _insert_after_heading(result, "## 方法细节", method_images)
+    if result_images:
+        result = _insert_after_heading(result, "## 离线指标", result_images)
+    elif general_images:
+        result = _insert_after_heading(result, "## 方法细节", general_images[:1])
+
+    return result
+
+
 def _resolve_key_pages(pdf_path: Path, args: argparse.Namespace, config: dict[str, Any]) -> list[dict]:
     if args.key_pages:
         return [
@@ -282,7 +352,61 @@ def _should_insert_key_pages(args: argparse.Namespace, config: dict[str, Any]) -
         return False
     if args.key_pages:
         return True
-    return bool(config.get("pipeline", {}).get("insert_key_pages", True))
+    return bool(config.get("pipeline", {}).get("insert_key_pages", False))
+
+
+def _should_insert_key_assets(args: argparse.Namespace, config: dict[str, Any]) -> bool:
+    if args.no_key_assets:
+        return False
+    return bool(config.get("pipeline", {}).get("insert_key_assets", True))
+
+
+def _with_equations(args: argparse.Namespace, config: dict[str, Any]) -> bool:
+    return bool(args.with_equations or config.get("pipeline", {}).get("extract_equations", False))
+
+
+def _show_equations(args: argparse.Namespace, config: dict[str, Any]) -> bool:
+    return bool(args.with_equations or config.get("pipeline", {}).get("show_equations", False))
+
+
+def _identity_markdown(identity: dict) -> list[str]:
+    lines = []
+    title = str(identity.get("title") or "").strip()
+    authors = str(identity.get("authors") or "").strip()
+    abstract = str(identity.get("abstract") or "").strip()
+
+    if title:
+        lines.append(f"**论文标题**：{title}")
+    if authors:
+        lines.append(f"**作者信息**：{authors}")
+    if abstract:
+        lines.append(f"**摘要速览**：{abstract}")
+    return lines
+
+
+def _image_markdown(item: dict, md_base_dir: Path, label: str) -> str:
+    page = int(item.get("page", 0))
+    image_path = Path(item["path"])
+    relative_image_path = _markdown_relative_path(image_path, md_base_dir)
+    return f"![{label}｜论文第 {page} 页]({relative_image_path})"
+
+
+def _insert_after_heading(markdown: str, heading: str, inserted_lines: list[str]) -> str:
+    if not inserted_lines or heading not in markdown:
+        return markdown
+
+    lines = markdown.splitlines()
+    output = []
+    inserted = False
+    for index, line in enumerate(lines):
+        output.append(line)
+        if not inserted and line.strip() == heading:
+            output.append("")
+            output.extend(inserted_lines)
+            if index + 1 < len(lines) and lines[index + 1].strip():
+                output.append("")
+            inserted = True
+    return "\n".join(output)
 
 
 def _markdown_relative_path(path: Path, base_dir: Path) -> str:
