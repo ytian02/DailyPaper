@@ -1,0 +1,16 @@
+provider: openai
+model: gpt-4o-mini
+
+temperature: 0.2
+max_tokens: 4096
+
+api:
+  openai_api_key_env: OPENAI_API_KEY
+  openai_base_url: null
+  openrouter_api_key_env: OPENROUTER_API_KEY
+  openrouter_base_url: https://openrouter.ai/api/v1
+
+pipeline:
+  save_intermediate_json: true
+  max_input_chars: 60000
+  output_dir: outputs
