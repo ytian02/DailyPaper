@@ -14,3 +14,11 @@ pipeline:
   save_intermediate_json: true
   max_input_chars: 60000
   output_dir: outputs
+  insert_key_pages: true
+  key_pages_max: 5
+  render_page_zoom: 2.0
+  export_pdf: false
+
+pdf:
+  font_path: null
+  font_name: null
