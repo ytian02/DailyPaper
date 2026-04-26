@@ -5,13 +5,14 @@ This repository contains a local Python pipeline that converts a research paper 
 ## Project Shape
 
 - `pipeline.py`: CLI entrypoint and orchestration.
-- `tools/pdf_parser.py`: PDF text extraction with `pymupdf`.
+- `tools/pdf_parser.py`: PDF text extraction, page text metadata, key-page selection, and page PNG rendering with `pymupdf`.
 - `tools/equation_extractor.py`: equation candidate heuristics and markdown LaTeX validation.
+- `tools/md_to_pdf.py`: pure-Python markdown-to-PDF rendering with ReportLab.
 - `llm/llm_client.py`: provider abstraction for OpenAI, OpenAI-compatible base URLs, LiteLLM, and OpenRouter.
 - `prompts/extract_prompt.md`: stage 1 structured extraction prompt.
 - `prompts/summarize_prompt.md`: stage 2 Chinese markdown rewrite prompt.
 - `config.yaml`: default provider/model/runtime settings.
-- `outputs/`: generated markdown and JSON outputs; generated files are ignored by git.
+- `outputs/`: generated markdown, PDF, JSON, and page assets; generated files are ignored by git.
 
 ## Run Commands
 
@@ -27,10 +28,22 @@ Run the pipeline:
 python pipeline.py --pdf path/to/paper.pdf --config config.yaml
 ```
 
+Run with manual key pages:
+
+```bash
+python pipeline.py --pdf path/to/paper.pdf --key-pages 1,3,7
+```
+
+Run with PDF export:
+
+```bash
+python pipeline.py --pdf path/to/paper.pdf --export-pdf
+```
+
 Run syntax checks:
 
 ```bash
-python -m py_compile pipeline.py tools/pdf_parser.py tools/equation_extractor.py llm/llm_client.py
+python -m py_compile pipeline.py tools/pdf_parser.py tools/equation_extractor.py tools/md_to_pdf.py llm/llm_client.py
 ```
 
 ## LLM Configuration
@@ -65,6 +78,9 @@ For OpenRouter, use `provider: openrouter`; do not reuse `openai_base_url`.
 - Preserve the two-stage LLM design:
   - stage 1: paper text plus equation hints to structured JSON
   - stage 2: structured JSON to markdown
+- Keep the six original markdown sections compatible; append optional paper page images under `## 论文关键图页`.
+- Key pages are full-page screenshots. Do not crop figures unless the user explicitly asks.
+- PDF export is pure Python and keeps LaTeX formulas as readable text in v1.
 - Do not invent formulas. If PDF text cannot recover an equation, preserve the `未清晰提取` behavior.
 - Keep generated outputs out of git unless the user explicitly asks for sample artifacts.
 - Prefer small, focused changes and update README examples when command behavior changes.

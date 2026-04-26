@@ -10,4 +10,6 @@ env/
 .env.*
 outputs/*.json
 outputs/*.md
+outputs/*.pdf
+outputs/assets/
 !outputs/.gitkeep
